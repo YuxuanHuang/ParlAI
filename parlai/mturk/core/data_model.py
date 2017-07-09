@@ -34,16 +34,17 @@ class Message(Base):
     message_content = Column(UnicodeText)
 
 
-class MTurkHITInfo(Base):
-    __tablename__ = 'mturk_hit_info'
+class MTurkHITAgentWorkStatus(Base):
+    __tablename__ = 'mturk_hit_agent_work_status'
     id = Column(Integer, primary_key=True)
     task_group_id = Column(String(255), index=True)
     conversation_id = Column(String(255), index=True)
+    agent_id = Column(String(255), index=True)
     assignment_id = Column(String(255))
     hit_id = Column(String(255))
     worker_id = Column(String(255))
     is_sandbox = Column(Boolean())
-    approval_status = Column(String(100), index=True)
+    work_status = Column(String(255))
 
     def as_dict(self):
        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
@@ -62,7 +63,7 @@ def check_database_health():
 
     try:
         # Check whether all tables exist
-        for model_class in [Message, MTurkHITInfo, MTurkHITAgentAllocation]:
+        for model_class in [Message, MTurkHITAgentWorkStatus, MTurkHITAgentAllocation]:
             if not engine.dialect.has_table(engine, model_class.__tablename__):
                 return 'missing_table'
 
@@ -74,16 +75,16 @@ def check_database_health():
             session.delete(test_message)
             session.commit()
 
-            test_hit_info = MTurkHITInfo(id=0, task_group_id='Test', conversation_id='Test', assignment_id='Test', hit_id='Test', worker_id='Test', is_sandbox=True, approval_status='Test')
-            session.add(test_hit_info)
+            test_agent_work_status = MTurkHITAgentWorkStatus(id=0, task_group_id='Test', conversation_id='Test', agent_id='Test', assignment_id='Test', hit_id='Test', worker_id='Test', is_sandbox=True, work_status='Test')
+            session.add(test_agent_work_status)
             session.commit()
-            session.delete(test_hit_info)
+            session.delete(test_agent_work_status)
             session.commit()
 
-            test_hit_assignment_info = MTurkHITAgentAllocation(id=0, task_group_id='Test', agent_id='Test')
-            session.add(test_hit_assignment_info)
+            test_agent_allocation = MTurkHITAgentAllocation(id=0, task_group_id='Test', agent_id='Test')
+            session.add(test_agent_allocation)
             session.commit()
-            session.delete(test_hit_assignment_info)
+            session.delete(test_agent_allocation)
             session.commit()
 
             return 'healthy'
@@ -280,44 +281,43 @@ def get_hit_index_and_assignment_index(db_session, task_group_id, agent_id, num_
     return {'hit_index': math.floor(index_in_list / num_assignments) + 1, 'assignment_index': index_in_list % num_assignments + 1}
 
 
-def set_hit_info(db_session, task_group_id, conversation_id, assignment_id, hit_id, worker_id, is_sandbox, approval_status='pending'):
-    existing_object = db_session.query(MTurkHITInfo) \
-                        .filter(MTurkHITInfo.task_group_id==task_group_id) \
-                        .filter(MTurkHITInfo.conversation_id==conversation_id) \
-                        .filter(MTurkHITInfo.assignment_id==assignment_id) \
-                        .filter(MTurkHITInfo.hit_id==hit_id) \
+def set_agent_work_status(db_session, task_group_id, conversation_id, agent_id, assignment_id, hit_id, worker_id, is_sandbox, work_status='done'):
+    existing_object = db_session.query(MTurkHITAgentWorkStatus) \
+                        .filter(MTurkHITAgentWorkStatus.task_group_id==task_group_id) \
+                        .filter(MTurkHITAgentWorkStatus.conversation_id==conversation_id) \
+                        .filter(MTurkHITAgentWorkStatus.assignment_id==assignment_id) \
+                        .filter(MTurkHITAgentWorkStatus.hit_id==hit_id) \
                         .first()
     if not existing_object:
-        new_hit_info_object = MTurkHITInfo(
+        new_work_status_object = MTurkHITAgentWorkStatus(
             task_group_id=task_group_id,
             conversation_id=conversation_id,
+            agent_id=agent_id,
             assignment_id=assignment_id, 
             hit_id=hit_id, 
             worker_id=worker_id,
             is_sandbox=is_sandbox,
-            approval_status=approval_status
+            work_status=work_status
         )
-        db_session.add(new_hit_info_object)
+        db_session.add(new_work_status_object)
         db_session.commit()
     else:
         existing_object.assignment_id = assignment_id
         existing_object.hit_id = hit_id
         existing_object.worker_id = worker_id
         existing_object.is_sandbox = is_sandbox
-        existing_object.approval_status = approval_status
+        existing_object.work_status = work_status
         db_session.add(existing_object)
         db_session.commit()
 
 
-def get_all_matching_hit_infos(db_session, task_group_id, conversation_id):
-    matching_hit_infos = list(db_session.query(MTurkHITInfo).filter(MTurkHITInfo.task_group_id==task_group_id).filter(MTurkHITInfo.conversation_id==conversation_id).all())
-    return matching_hit_infos
-
-def get_approval_status_count(db_session, task_group_id, approval_status, conversation_id=None):
-    query = db_session.query(MTurkHITInfo).filter(MTurkHITInfo.task_group_id==task_group_id).filter(MTurkHITInfo.approval_status==approval_status)
-    if conversation_id:
-        query = query.filter(MTurkHITInfo.conversation_id==conversation_id)
-    return query.count()
-
-def get_all_approval_status(db_session, task_group_id):
-    return db_session.query(MTurkHITInfo).filter(MTurkHITInfo.task_group_id==task_group_id).order_by(MTurkHITInfo.conversation_id).all()
+def get_agent_work_status(db_session, task_group_id, conversation_id, agent_id):
+    matching_work_status_object = db_session.query(MTurkHITAgentWorkStatus) \
+                                .filter(MTurkHITAgentWorkStatus.task_group_id==task_group_id) \
+                                .filter(MTurkHITAgentWorkStatus.conversation_id==conversation_id) \
+                                .filter(MTurkHITAgentWorkStatus.agent_id==agent_id) \
+                                .first()
+    if matching_work_status_object:
+        return matching_work_status_object.work_status
+    else:
+        return None
